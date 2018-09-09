@@ -2,10 +2,13 @@
 using AngleSharp.Parser.Html;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace AddressExtractor
 {
@@ -14,7 +17,7 @@ namespace AddressExtractor
         static string baseUrl = "https://www.xo.gr/dir-tk";
         static string baseUrlPrefectureAreas = "https://www.xo.gr";
         static string baseUrlAddress = "https://www.xo.gr";
-        private static readonly HttpClient client = new HttpClient();
+        private static readonly HttpClient Client = new HttpClient();
 
         [STAThread]
         static void Main(string[] args)
@@ -24,14 +27,28 @@ namespace AddressExtractor
 
         static async Task MainAsync(string[] args)
         {
-            var perfectures = await ReadPerfectureList();
+            Console.OutputEncoding = Encoding.UTF8;
 
-            var allZipCodeAreas = await ReadAllPerfectureZipCodeAreas(perfectures);
+            Console.WriteLine("Reading Prefectures");
+            var prefectures = await ReadPrefectureList();
 
+            Console.WriteLine("Reading Zip Code Areas");
+            var allZipCodeAreas = await ReadAllPrefectureZipCodeAreas(prefectures);
+
+            Console.WriteLine("Reading Addresses");
             var allAddresses = await ReadAllAddresses(allZipCodeAreas);
+
+            Console.WriteLine("Formatting to JSON");
+            var resultString = JsonConvert.SerializeObject(allAddresses);
+
+            Console.WriteLine("Writing to file");
+            File.WriteAllText(@"C:\Users\Public\TestFolder\address.json", resultString);
+
+            Console.WriteLine("Done.");
+            Console.ReadLine();
         }
 
-        private static async Task<List<string>> ReadPerfectureList()
+        private static async Task<List<string>> ReadPrefectureList()
         {
             // Setup the configuration to support document loading
             var config = Configuration.Default.WithDefaultLoader();
@@ -49,7 +66,7 @@ namespace AddressExtractor
             return cells.Select(m => m.GetAttribute("href")).ToList();
         }
 
-        private static async Task<List<string>> ReadAllPerfectureZipCodeAreas(List<string> perfectures)
+        private static async Task<List<string>> ReadAllPrefectureZipCodeAreas(List<string> prefectures)
         {
             var allZipCodeAreas = new List<string>();
 
@@ -59,17 +76,17 @@ namespace AddressExtractor
             // This CSS selector gets the desired content
             var cellSelector = "ul[class='unorderedGeoPrefLoc span4']>li>a";
 
-            foreach (var perfecture in perfectures)
+            foreach (var prefecture in prefectures)
             {
-                var tempZipCodeAreas = new List<string>();
+                List<string> tempZipCodeAreas;
 
                 var counter = 1;
 
                 do
                 {
-                    var url = $"{baseUrlPrefectureAreas}{perfecture}?page={counter}";
+                    var url = $"{baseUrlPrefectureAreas}{prefecture}?page={counter}";
 
-                    Console.WriteLine(perfecture);
+                    Console.WriteLine(prefecture);
 
                     var document = await BrowsingContext.New(config).OpenAsync(url);
 
@@ -78,15 +95,9 @@ namespace AddressExtractor
 
                     tempZipCodeAreas = cells.Select(m => m.GetAttribute("href")).ToList();
 
-                    if (tempZipCodeAreas == null)
-                    {
-                        break;
-                    }
-
                     allZipCodeAreas.AddRange(tempZipCodeAreas);
 
                     counter++;
-
                 } while (tempZipCodeAreas.Any());
             }
 
@@ -103,7 +114,6 @@ namespace AddressExtractor
 
             foreach (var zipCodeArea in allZipCodeAreas)
             {
-
                 var url = $"{baseUrlAddress}{zipCodeArea}";
 
                 var document = await BrowsingContext.New(config).OpenAsync(url);
@@ -113,12 +123,7 @@ namespace AddressExtractor
 
                 var dataWhatCell = document.QuerySelector(cellSelector);
 
-                if (dataWhatCell == null)
-                {
-                    continue;
-                }
-
-                var dataWhat = dataWhatCell.GetAttribute("data-what");
+                var dataWhat = dataWhatCell?.GetAttribute("data-what");
 
                 if (dataWhat == null)
                 {
@@ -127,10 +132,14 @@ namespace AddressExtractor
 
                 var pageCounter = 1;
 
-                var addresses = new List<Address>();
+                List<Address> addresses;
 
                 do
                 {
+                    // XO.gr thinks that i am bot and blocks my ip
+                    // Adding sleep to simulate human behaviour. Lets see if it works
+                    Thread.Sleep(2000);
+
                     // Fetch response page
                     var response = await PostAsync(dataWhat, pageCounter);
 
@@ -146,6 +155,7 @@ namespace AddressExtractor
                         allAddresses.AddRange(addresses);
                     }
 
+                    pageCounter++;
                 } while (addresses.Any());
             }
 
@@ -157,23 +167,24 @@ namespace AddressExtractor
             try
             {
                 var values = new Dictionary<string, string>
-            {
-               { "mode", "region" },
-               { "Query", $"{dataWhat}" },
-               { "Page", $"{page}" },
-               { "LanguageID", $"{language}" },
-               { "Filter", "name" },
-               { "Order", "asc" }
-            };
+                {
+                    {"mode", "region"},
+                    {"Query", $"{dataWhat}"},
+                    {"Page", $"{page}"},
+                    {"LanguageID", $"{language}"},
+                    {"Filter", "name"},
+                    {"Order", "asc"}
+                };
 
                 var content = new FormUrlEncodedContent(values);
 
-                var response = await client.PostAsync("https://www.xo.gr/AjaxView/AjaxZipCode", content);
+                var response = await Client.PostAsync("https://www.xo.gr/AjaxView/AjaxZipCode", content);
 
                 var responseString = await response.Content.ReadAsStringAsync();
 
                 return responseString;
-            }catch(Exception e)
+            }
+            catch (Exception e)
             {
                 Console.WriteLine(e.StackTrace);
                 return null;
@@ -187,22 +198,34 @@ namespace AddressExtractor
             var addresses = new List<Address>();
 
             // Line selector
-            var lineSelector = "table[id='zipTable']>tbody tr";
+            const string lineSelector = "table[id='zipTable']>tbody>tr";
 
             var document = parser.Parse(response);
 
-            var addressRows = document.QuerySelectorAll(lineSelector);
+            var addressLines = document.QuerySelectorAll(lineSelector);
 
-            foreach(var row in addressRows)
+            if (addressLines == null || !addressLines.Any())
             {
-                var childern = row.ChildNodes;
+                return new List<Address>();
+            }
+
+            foreach (var addressLine in addressLines)
+            {
+                const string addressPartSelector = "td";
+
+                var addressParts = addressLine.QuerySelectorAll(addressPartSelector);
+
+                if (addressParts == null || !addressParts.Any())
+                {
+                   continue;
+                }
 
                 var temp = new Address()
                 {
-                    Name = childern[0].TextContent,
-                    ZipCode = childern[1].TextContent,
-                    CityArea = childern[2].TextContent,
-                    Prefecture = childern[3].TextContent,
+                    Name = addressParts[0].TextContent,
+                    ZipCode = addressParts[1].TextContent,
+                    CityArea = addressParts[2].TextContent,
+                    Prefecture = addressParts[3].TextContent,
                 };
 
                 addresses.Add(temp);
