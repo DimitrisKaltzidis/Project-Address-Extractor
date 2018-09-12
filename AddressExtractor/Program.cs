@@ -22,7 +22,7 @@ namespace AddressExtractor
         [STAThread]
         static void Main(string[] args)
         {
-            MainAsync(args).GetAwaiter().GetResult();
+                MainAsync(args).GetAwaiter().GetResult();
         }
 
         static async Task MainAsync(string[] args)
@@ -35,6 +35,10 @@ namespace AddressExtractor
             Console.WriteLine("Reading Zip Code Areas");
             var allZipCodeAreas = await ReadAllPrefectureZipCodeAreas(prefectures);
 
+            // Continue from thessaloniki and after
+            var wantedElement = allZipCodeAreas.FindIndex(x => x.Equals("/taxydromikos-kodikas-tk/Thessaloniki/"));
+            allZipCodeAreas = allZipCodeAreas.GetRange(wantedElement, allZipCodeAreas.Count-wantedElement);
+
             Console.WriteLine("Reading Addresses");
             var allAddresses = await ReadAllAddresses(allZipCodeAreas);
 
@@ -42,7 +46,7 @@ namespace AddressExtractor
             var resultString = JsonConvert.SerializeObject(allAddresses);
 
             Console.WriteLine("Writing to file");
-            File.WriteAllText(@"C:\Users\Public\TestFolder\address.json", resultString);
+            File.WriteAllText(@"C:\address.json", resultString);
 
             Console.WriteLine("Done.");
             Console.ReadLine();
@@ -138,7 +142,7 @@ namespace AddressExtractor
                 {
                     // XO.gr thinks that i am bot and blocks my ip
                     // Adding sleep to simulate human behaviour. Lets see if it works
-                    Thread.Sleep(2000);
+                    Thread.Sleep(1200);
 
                     // Fetch response page
                     var response = await PostAsync(dataWhat, pageCounter);
