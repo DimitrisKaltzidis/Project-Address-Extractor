@@ -35,10 +35,6 @@ namespace AddressExtractor
             Console.WriteLine("Reading Zip Code Areas");
             var allZipCodeAreas = await ReadAllPrefectureZipCodeAreas(prefectures);
 
-            // Continue from thessaloniki and after
-            var wantedElement = allZipCodeAreas.FindIndex(x => x.Equals("/taxydromikos-kodikas-tk/Thessaloniki/"));
-            allZipCodeAreas = allZipCodeAreas.GetRange(wantedElement, allZipCodeAreas.Count-wantedElement);
-
             Console.WriteLine("Reading Addresses");
             var allAddresses = await ReadAllAddresses(allZipCodeAreas);
 
@@ -46,7 +42,7 @@ namespace AddressExtractor
             var resultString = JsonConvert.SerializeObject(allAddresses);
 
             Console.WriteLine("Writing to file");
-            File.WriteAllText(@"C:\address.json", resultString);
+            File.WriteAllText(@"C:\address.txt", resultString);
 
             Console.WriteLine("Done.");
             Console.ReadLine();
