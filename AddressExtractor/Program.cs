@@ -42,7 +42,7 @@ namespace AddressExtractor
             var resultString = JsonConvert.SerializeObject(allAddresses);
 
             Console.WriteLine("Writing to file");
-            File.WriteAllText(@"C:\Users\Public\TestFolder\address.json", resultString);
+            File.WriteAllText(@"C:\address.json", resultString);
 
             Console.WriteLine("Done.");
             Console.ReadLine();
