@@ -138,7 +138,7 @@ namespace AddressExtractor
                 {
                     // XO.gr thinks that i am bot and blocks my ip
                     // Adding sleep to simulate human behaviour. Lets see if it works
-                    Thread.Sleep(2000);
+                    Thread.Sleep(1200);
 
                     // Fetch response page
                     var response = await PostAsync(dataWhat, pageCounter);
